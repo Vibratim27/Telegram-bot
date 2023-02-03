@@ -1,0 +1,78 @@
+import telebot
+import requests
+import json
+
+TOKEN = "5900219320:AAEUeaKYZVPD_jgA1Gmr9yFN8JRoQVSI8M8"
+
+bot = telebot.TeleBot(TOKEN)
+
+
+keys = {
+    'Евро': 'EUR',
+    'Рубль': 'RUB',
+    'Доллар': 'USD'
+}
+
+
+class ConvertionException(Exception):
+    pass
+
+
+class CryptoConverter:
+    @staticmethod
+    def convert(quote: str, base: str, amount: str):
+        if quote == base:
+            raise ConvertionException(f'Невозможно перевести одинковые валюты {base}.')
+
+        try:
+            quote_ticket = keys[quote]
+        except KeyError:
+            raise ConvertionException(f'Не удалось обработать валюту {quote}')
+
+        try:
+            base_ticket = keys[base]
+        except KeyError:
+            raise ConvertionException(f'Не удалось обработать валюту {base}')
+
+        try:
+            amount = float(amount)
+        except ValueError:
+            raise ConvertionException(f'Не удалось обработать количество{amount}')
+
+
+        r = requests.get(f'https://min-api.cryptocompare.com/data/price?fsym={quote_ticket}&tsyms={base_ticket}')
+        total_base = json.loads(r.content)[keys[base]]
+
+        return total_base
+
+
+@bot.message_handler(commands=['start', 'help'])
+def help(message: telebot.types.Message):
+    text = 'Чтобы началь работу введите командру боту в следующем формате:\n<имя валюты, цену которой он хочет узнать> \
+<Имя валюты, в которой надо узнать цену первой валюты> \
+<количество переводной валюты>\n Увидить список всех доступных валют: /values'
+    bot.reply_to(message, text)
+
+@bot.message_handler(commands=['values'])  #Аквитируется по команде "values"
+def values(message: telebot.types.Message):
+    text = 'Доступные валюты:'
+    for key in keys.keys():
+        text = '\n'.join((text, key, ))     #Метод join - каждая новая валюта будет переносится на строчку вниз
+    bot.reply_to(message, text)
+
+@bot.message_handler(content_types=['text', ])
+def convert(message: telebot.types.Message):
+    values = message.text.split(' ')
+
+    if len(values) != 3:
+        raise ConvertionException('Слишком много параметров')
+
+    quote, base, amount = values
+    total_base = CryptoConverter.convert(quote, base, amount)
+
+    text = f'Цена {amount} {quote} в {base} - {total_base }'
+    bot.send_message(message.chat.id, text)
+
+
+bot.polling()
+
